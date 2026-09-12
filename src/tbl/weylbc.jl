@@ -480,12 +480,17 @@ chevieset(:B,:UnipotentClasses,function(r,char,cartanType)
   end
   for (i,ss) in enumerate(uc[:springerSeries])
   # ss[:hc]=0 when the local systems are not in the unipotent Lusztig series
-  # see [Appendix, dlm]. 
+  # Odd characteristic: Digne–Lehrer–Michel, "On character sheaves and
+  # characters of reductive groups at unipotent classes", arXiv:1307.0698,
+  # Lemmas 5.2–5.3 and Appendix B.
   # ss[:hc]=i when cuspidal local system is fourier(cuspidal i-th HC series)
     if char!=2 if i>1 ss[:hc]=0 end
     else
-      if !all(isone,ss[:Z]) ss[:hc]=0 end
-      if r==2 && i==2 ss[:hc]=2 end
+      # Shoji, "Lusztig's conjecture for finite classical groups with even
+      # characteristic", arXiv:0712.2296, Theorems 2.2, 6.2 and Corollary 6.3.
+      # In split characteristic 2, R=Xtilde in our normalization. Both lists
+      # order the series by cuspidal rank d(d+1), with the same bipartitions.
+      ss[:hc]=i
     end
   end
   uc

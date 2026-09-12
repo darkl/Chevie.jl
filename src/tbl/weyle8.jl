@@ -3301,11 +3301,15 @@ chevieset(:E8, :UnipotentClasses, function(p)
          [findfirst(i->Ucl.nameclass(i;mizuno=true)==l[s][1],uc[:classes]),
           l[s][2]]
        end, :hc => 4))
+    # Hetz, "The values of unipotent characters at unipotent elements for
+    # groups of type E8 and 2E6", arXiv:2309.09915v2, §§3.5–3.7 and
+    # Proposition 3.10: the E7[-i] and E7[i] induced pairs are unipotent
+    # character sheaves, with comparison scalar +1 at good representatives.
     append!(uc[:springerSeries], [Dict{Symbol, Any}(
       :relgroup => coxgroup(:A, 1), :levi => 1:7, :Z => [], 
-      :locsys => [[5, 2], [1, 2]], :hc => 0), 
+      :locsys => [[5, 2], [1, 2]], :hc => 2),
      Dict{Symbol, Any}(:relgroup => coxgroup(:A, 1), :levi => 1:7,
-      :Z => [], :locsys => [[5, 4], [1, 4]], :hc => 0),
+      :Z => [], :locsys => [[5, 4], [1, 4]], :hc => 3),
      Dict{Symbol, Any}(:relgroup => coxgroup(), :levi => 1:8, :Z => [],
                        :locsys => [[2, 2]], :hc => 17), 
      Dict{Symbol, Any}(:relgroup => coxgroup(), :levi => 1:8, :Z => [],

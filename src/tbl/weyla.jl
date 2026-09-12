@@ -166,13 +166,20 @@ chevieset(:A, :Invariants, function(n)
   end
 end)
 
-chevieset(:A, :UnipotentClasses, function (n, _)
+chevieset(:A, :UnipotentClasses, function (n, char)
+  # Shoji, "Generalized Green functions and unipotent classes for finite
+  # reductive groups, I", arXiv:math/0507057, §3.2: use the prime-to-p part
+  # of n+1 for cuspidal pairs and gcd(lambda) for the component groups.
+  primepart=n+1
+  if char>1
+    while primepart%char==0 primepart=div(primepart,char) end
+  end
   uc=Dict{Symbol, Any}(:classes=>
       map(p->Dict{Symbol,Any}(:parameter=>p),chevieget(:A,:charparams)(n)),
     :springerSeries=>vcat(map(d->map(i->
       Dict{Symbol,Any}(:relgroup =>coxgroup(:A,div(n+1,d)-1),:Z=>[E(d,i)],
         :levi=>filter(i->mod(i,d)!=0,1:n+1),:locsys=>[]),
-            prime_residues(d)),divisors(n+1))...))
+            prime_residues(d)),divisors(primepart))...))
   ss(z)=uc[:springerSeries][findfirst(x->x[:Z]==[z],uc[:springerSeries])]
   function partition2parab(p)
     res=Int[]
@@ -189,7 +196,7 @@ chevieset(:A, :UnipotentClasses, function (n, _)
   for i in 1:length(uc[:classes])
     cl=uc[:classes][i]
     p=cl[:parameter]
-    d=gcd(p)
+    d=gcd(gcd(p),primepart)
     cl[:name]=joindigits(p)
     cl[:Au]=crg(d,1,1)
     cl[:balacarter]=vcat(map(i->sum(p[1:i-1]).+(1:p[i]-1),1:length(p))...)

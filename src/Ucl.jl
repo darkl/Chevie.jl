@@ -709,12 +709,15 @@ Base.length(uc::UnipotentClasses)=length(uc.classes)
 describing  a reductive algebraic group `𝐆`.  The function returns a record
 containing information about the unipotent classes of `𝐆` in characteristic
 `p`  (if omitted, `p`  is assumed to  be any good  characteristic for `𝐆`).
+In type A, also specify `p` when it divides the order of the simply
+connected centre, since the component groups then change.
 This contains the following fields:
 
 `group`: a pointer to `W`
 
 `p`: the characteristic of the field for which the unipotent classes were
-computed. It is `0` for any good characteristic.
+computed. It is `0` for a generic good characteristic; in type A it is also
+retained when it divides the order of the simply connected centre.
 
 `orderclasses`:  a list describing the Hasse diagram of the partial order
 induced   on   unipotent   classes   by   the  closure  relation.  That  is
@@ -814,7 +817,13 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
 # we construct the unipotentclasses record for a general reductive group
 # as a quotient of the record for a simply connected group
 # xprintln("UnipotentClasses(",W,")")
-  if !(p in (W isa Spets ? badprimes(Group(W)) : badprimes(W))) p=0 end
+  w=W isa Spets ? Group(W) : W
+  # Type A also depends on p when p divides the simply connected centre;
+  # see Shoji, arXiv:math/0507057, §3.2, and the type A table.
+  if !(p in badprimes(w)) &&
+     !(p>1 && any(t->t.series==:A && (rank(t)+1)%p==0,refltype(w)))
+    p=0
+  end
   get!(W,Symbol("unipotentclasses",p))do
   spetscase=W isa Spets
   if spetscase
@@ -1272,7 +1281,7 @@ end
 @GapObj struct XTable end
 
 """
-`XTable(uc;classes=false)`
+`XTable(uc;q=Mvp(:q),classes=false)`
 
 This  function presents  in a  different way  the information obtained from
 `ICCTable`. Let ``X̃_{u,ϕ}=q^{1/2(codim C-dim Z(𝐋 ))}X_{u,ϕ}`` where `C` is
@@ -1360,11 +1369,23 @@ Values of character sheaves X̃ᵪ of sl₄ on local systems φ
 ```
 """
 function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
-# println("here uc=",uc)
+  if q isa Integer
+    q=big(q)
+    w=uc.spets
+    t=refltype(w isa Spets ? Group(w) : w)
+    if (!(w isa Spets) || isone(w.phi)) && length(t)==1 && t[1].series==:A &&
+       any(c->(q-1)%length(c.Au)!=0,uc.classes)
+      error("nontrivial Frobenius action on type A component groups not implemented")
+    end
+  end
   pieces=map(i->ICCTable(uc,i),eachindex(uc.springerseries))
 # Note that c_ι=βᵤ+(rkss L_\CI)/2
-  greenpieces=map((x,y)->map(x->x(q),x.scalar)*Diagonal(q.^x.dimBu)*
-                  q^(length(y[:levi])//2),pieces,uc.springerseries)
+  greenpieces=map(pieces,uc.springerseries)do x,y
+    r=length(y[:levi])
+    # Keep half-integral powers exact, in particular for E7-induced series.
+    c=q^div(r,2)*(isodd(r) ? root(q) : 1)
+    map(x->x(q),x.scalar)*Diagonal(q.^x.dimBu)*c
+  end
   l=vcat(getproperty.(pieces,:locsys)...)
   p=inv(sortPerm(l))
   res=XTable(Dict(
@@ -1375,6 +1396,23 @@ function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
     :q=>q,
     :class=>classes))
   res.Y=map(x->x(q),res.Y)
+  if q isa Integer && q%3==2
+    for (j,(c,a)) in enumerate(invpermute(l,p))
+      u=uc.classes[c]
+      if u.name in ("E_8(b_6)","G_2(a_1)") && length(u.Au)==6 &&
+         a==charinfo(u.Au).positionDet
+        # E8(b6)=D8(a3): Lübeck, "Green Functions in Small Characteristic",
+        # arXiv:2403.18190v2, Theorem 6.1; for p>5 see Hetz,
+        # arXiv:2309.09915v2, §4.3(b). The sign local system has factor -1.
+        # For G2(a1), Digne–Lehrer–Michel, arXiv:1307.0698, Appendix B
+        # identifies R_(1,epsilon). Its rational comparison factor s is ±1;
+        # integrality of (q²-s*q)/3 forces s=-1 here (also in characteristic 2).
+        res.scalar[:,j]*=-1
+        res.Y[j,:]*=-1
+        res.Y[:,j]*=-1
+      end
+    end
+  end
   if classes
     res.scalar*=E(1)
     res.cardClass=zeros(eltype(res.scalar),length(l))*1//1
@@ -1543,13 +1581,20 @@ end
 @GapObj struct ValuesTable end
 
 """
-`UnipotentValues(uc,classes=false)`
+`UnipotentValues(uc;q=Mvp(:q),classes=false)`
 
 This  function returns  a table  of the  values of  unipotent characters on
 local  systems (by  default) or  on unipotent  classes (if `classes=true`).
 These  tables are for *generic `q`*, that is their validity depends on some
 assumptions  on `q` (sometimes `q` large enough, or for `G₂` when `q≡1 (mod
 3)`).
+
+For an integer `q`, values are exact, including square roots and the
+field-dependent signs in `G₂` and `E₈`. Specify the characteristic in
+`UnipotentClasses(W,p)` before passing `q=p^f`. For symbolic `q` these
+factors remain +1 (`q≡1 (mod 3)` when the congruence matters). Split classical
+groups in characteristic two are supported; nontrivial Frobenius actions
+on type A component groups are not implemented.
 
 ```julia-repl
 julia> W=coxgroup(:G,2)
@@ -1612,12 +1657,15 @@ function UnipotentValues(uc;q=Mvp(:q),classes=false)
   m=Vector{eltype(f[1])}[]
   for (i,ss) in pairs(uc.springerseries)
   # ss[:hc]=0 : local systems are not in unipotent Lusztig series
-  # ss[:hc]=i : the (unique) local system is fourier(cuspidal of i-th hc series)
+  # ss[:hc]=i : XTable rows correspond to the Fourier rows of the i-th HC series
   # ss[:hc] unbound: information missing
-    if i==1 append!(m,f[charnumbers(uw.harishChandra[1])])
-    elseif !haskey(ss,:hc) error("not implemented")
-    elseif ss[:hc]==0 append!(m,map(_->zero(f[1]),eachindex(ss[:locsys])))
-    else append!(m,f[charnumbers(uw.harishChandra[ss[:hc]])])
+    hc=i==1 ? 1 : get(ss,:hc,nothing)
+    if isnothing(hc) error("Springer/Harish-Chandra correspondence for series $i not implemented")
+    elseif hc==0 append!(m,map(_->zero(f[1]),eachindex(ss[:locsys])))
+    else
+      n=charnumbers(uw.harishChandra[hc])
+      length(n)==length(ss[:locsys]) || error("Springer/Harish-Chandra correspondence for series $i not implemented")
+      append!(m,f[n])
     end
   end
   t.scalar=transpose(toM(m))*t.scalar
