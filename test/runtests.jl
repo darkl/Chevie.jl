@@ -1167,3 +1167,5 @@ end
 end
 
 include("unipotentvalues.jl")
+include("unipotentproducts.jl")
+include("unipotentlabels.jl")

@@ -693,6 +693,18 @@ function UnipotentClasses(t::TypeIrred,p=0)
     if isempty(s[:levi]) s[:levi]=Int[] end
 #   s[:levi]=indices(t)[s[:levi]]
     s[:locsys]=Vector{Int}.(s[:locsys])
+    # E8(b6)=D8(a3): Lübeck, arXiv:2403.18190v2, Theorem 6.1;
+    # for p>5 see Hetz, arXiv:2309.09915v2, §4.3(b).
+    # For G2(a1), Digne–Lehrer–Michel, arXiv:1307.0698, Appendix C
+    # identifies R_(1,epsilon). Its rational comparison factor s is ±1;
+    # integrality of (q²-s*q)/3 forces s=-1 for q≡-1 mod 3, also in p=2.
+    # Store the signs with the local systems before taking products/quotients.
+    signs=map(s[:locsys])do (c,a)
+      u=classes[c]
+      u.name in ("E_8(b_6)","G_2(a_1)") && length(u.Au)==6 &&
+        a==charinfo(u.Au).positionDet ? -1 : 1
+    end
+    if -1 in signs s[:qMod3Signs]=signs end
   end
   orderclasses=Poset(CPoset(uc[:orderClasses]),classes)
   delete!.(Ref(uc),[:classes,:orderClasses,:springerSeries])
@@ -924,9 +936,21 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
     end
     if all(haskey.(v,:parameter)) s[:parameter]=getindex.(v,:parameter) end
     s[:relgroup]=prod(getindex.(v,:relgroup))
-    if length(v)==1
-      for k in setdiff(keys(v[1]),[:levi,:Z,:locsys,:parameter])
-        s[k]=v[1][k]
+    # External products multiply comparison constants. These vectors follow
+    # :locsys through AdjustAu!, which retains the characters of the quotient.
+    if any(x->haskey(x,:qMod3Signs),v)
+      s[:qMod3Signs]=prod.(cartesian(map(x->get(x,:qMod3Signs,
+                                          ones(Int,length(x[:locsys]))),v)...))
+    end
+    s[:typeAOrder]=lcm(map(x->get(x,:typeAOrder,1),v))
+    if !spetscase || isone(WF.phi)
+      hc=[v[i]===uc[i].springerseries[1] ? 1 : get(v[i],:hc,nothing)
+            for i in eachindex(v)]
+      if 0 in hc s[:hc]=0
+      elseif all(!isnothing,hc)
+        # Uch.CartesianSeries uses this same ordering of cuspidal data.
+        sizes=map(x->length(chevieget(x,:UnipotentCharacters)[:harishChandra]),t)
+        s[:hc]=cart2lin(sizes,hc)
       end
     end
     s
@@ -957,7 +981,9 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
   s=springerseries[1]
   if spetscase
     s[:relgroup]=relative_coset(WF,s[:levi])
-    s[:locsys]=s[:locsys][charinfo(s[:relgroup]).charRestrictions]
+    for key in (:locsys,:qMod3Signs)
+      if haskey(s,key) s[key]=s[key][charinfo(s[:relgroup]).charRestrictions] end
+    end
   end
   l=filter(i->any(y->i==y[1],s[:locsys]),1:length(classes))
   s[:locsys]=map(((c,s),)->[findfirst(==(c),l),s],s[:locsys])
@@ -965,7 +991,9 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
   for s in springerseries[2:end]
     if spetscase
       s[:relgroup]=relative_coset(WF,s[:levi])
-      s[:locsys]=s[:locsys][charinfo(s[:relgroup]).charRestrictions]
+      for key in (:locsys,:qMod3Signs)
+        if haskey(s,key) s[key]=s[key][charinfo(s[:relgroup]).charRestrictions] end
+      end
     end
     s[:locsys]=map(((c,s),)->[findfirst(==(c),l),s],s[:locsys])
   end
@@ -1372,9 +1400,11 @@ function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
   if q isa Integer
     q=big(q)
     w=uc.spets
-    t=refltype(w isa Spets ? Group(w) : w)
-    if (!(w isa Spets) || isone(w.phi)) && length(t)==1 && t[1].series==:A &&
-       any(c->(q-1)%length(c.Au)!=0,uc.classes)
+    # Shoji, arXiv:math/0507057, §3.2: the type A central character has
+    # order d. Use the surviving series after central quotients, and the lcm
+    # of the orders in a product, to detect the nontrivial q-power action.
+    if (!(w isa Spets) || isone(w.phi)) &&
+       any(s->(q-1)%get(s,:typeAOrder,1)!=0,uc.springerseries)
       error("nontrivial Frobenius action on type A component groups not implemented")
     end
   end
@@ -1397,21 +1427,11 @@ function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
     :class=>classes))
   res.Y=map(x->x(q),res.Y)
   if q isa Integer && q%3==2
-    for (j,(c,a)) in enumerate(invpermute(l,p))
-      u=uc.classes[c]
-      if u.name in ("E_8(b_6)","G_2(a_1)") && length(u.Au)==6 &&
-         a==charinfo(u.Au).positionDet
-        # E8(b6)=D8(a3): Lübeck, "Green Functions in Small Characteristic",
-        # arXiv:2403.18190v2, Theorem 6.1; for p>5 see Hetz,
-        # arXiv:2309.09915v2, §4.3(b). The sign local system has factor -1.
-        # For G2(a1), Digne–Lehrer–Michel, arXiv:1307.0698, Appendix B
-        # identifies R_(1,epsilon). Its rational comparison factor s is ±1;
-        # integrality of (q²-s*q)/3 forces s=-1 here (also in characteristic 2).
-        res.scalar[:,j]*=-1
-        res.Y[j,:]*=-1
-        res.Y[:,j]*=-1
-      end
-    end
+    signs=vcat(map(s->get(s,:qMod3Signs,ones(Int,length(s[:locsys]))),
+                   uc.springerseries)...)
+    d=Diagonal(invpermute(signs,p))
+    res.scalar=res.scalar*d
+    res.Y=d*res.Y*d
   end
   if classes
     res.scalar*=E(1)
@@ -1593,8 +1613,9 @@ For an integer `q`, values are exact, including square roots and the
 field-dependent signs in `G₂` and `E₈`. Specify the characteristic in
 `UnipotentClasses(W,p)` before passing `q=p^f`. For symbolic `q` these
 factors remain +1 (`q≡1 (mod 3)` when the congruence matters). Split classical
-groups in characteristic two are supported; nontrivial Frobenius actions
-on type A component groups are not implemented.
+groups in characteristic two are supported. The known correspondences and
+normalization constants extend to split direct products; nontrivial Frobenius
+actions on type A component groups are not implemented.
 
 ```julia-repl
 julia> W=coxgroup(:G,2)

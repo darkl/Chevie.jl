@@ -178,7 +178,7 @@ chevieset(:A, :UnipotentClasses, function (n, char)
       map(p->Dict{Symbol,Any}(:parameter=>p),chevieget(:A,:charparams)(n)),
     :springerSeries=>vcat(map(d->map(i->
       Dict{Symbol,Any}(:relgroup =>coxgroup(:A,div(n+1,d)-1),:Z=>[E(d,i)],
-        :levi=>filter(i->mod(i,d)!=0,1:n+1),:locsys=>[]),
+        :levi=>filter(i->mod(i,d)!=0,1:n+1),:locsys=>[],:typeAOrder=>d),
             prime_residues(d)),divisors(primepart))...))
   ss(z)=uc[:springerSeries][findfirst(x->x[:Z]==[z],uc[:springerSeries])]
   function partition2parab(p)

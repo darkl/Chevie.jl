@@ -964,7 +964,11 @@ function prodpowmaps(rec::Vector,res)
     maxo=maximum(res[:orders])
     l=primes(maxo)
     pm=Vector{Any}(fill(nothing,maxo))
-    for p in l 
+    known(pm,n)=all(p<=length(pm) && !isnothing(pm[p]) for (p,_) in factor(n))
+    for p in l
+      # Factor tables may have partial power maps (e.g. E8 has no 11-map).
+      # Preserve missing maps as nothing instead of rejecting the product.
+      if !all(r->all(n->known(r.powermaps,mod1(p,n)),r.orders),rec) continue end
       powmap=fill(0,length(classes))
       for (i,c) in enumerate(classes)
         powmap[i]=findfirst(==(map(eachindex(c))do j
