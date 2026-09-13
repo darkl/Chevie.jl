@@ -243,3 +243,77 @@ end
     @test t.classes==v.classes
   end
 end
+
+
+@testset "Field branches in XTable and GreenTable" begin
+  # Lübeck--Shoji, arXiv:2408.16960, Theorem 2.19 and §§3.4,9.2:
+  # discarded central characters cannot be recovered by evaluating q alone.
+  for (name,n,p,branch,q,regular) in
+      ((:su,3,2,1,2,3),(:su,3,2,2,4,1),(:sl,3,2,2,4,3),
+       (Symbol("spin-"),10,0,1,3,4),(Symbol("spin-"),10,0,3,9,2),
+       (Symbol("2E6sc"),0,0,1,5,3),(Symbol("2E6sc"),0,0,5,7,1))
+    @testset "$name, branch=$branch, q=$q" begin
+      w=n==0 ? rootdatum(name) : rootdatum(name,n)
+      u=UnipotentClasses(w,p;q=branch)
+      before=deepcopy(u.springerseries)
+      for table in (XTable,GreenTable), classes in (false,true)
+        @test_throws "incompatible field branch" table(u;q,classes)
+      end
+      # The higher-level API still reconstructs the requested field branch.
+      t=UnipotentValues(u;q,classes=true)
+      @test count(c->t.uc.classes[c[1]].dimBu==0,t.classes)==regular
+      @test u.springerseries==before
+    end
+  end
+  @testset "Compatible field parameters" begin
+    for (form,branch,q,regular) in
+        ((:su,1,4,1),(:su,2,2,3),(:su,2,8,3),
+         (:sl,1,4,3),(:sl,2,2,1),(:sl,2,8,1))
+      u=UnipotentClasses(rootdatum(form,3),2;q=branch)
+      for table in (XTable,GreenTable)
+        t=table(u;q,classes=true)
+        @test count(c->t.uc.classes[c[1]].dimBu==0,t.classes)==regular
+        if form==:su && q==2
+          # |SU3(2)|=216, centralizers 216,24,12,12,12. The total
+          # 64 alone cannot distinguish [1,9,18,18,18] from [1,9,54].
+          @test sort(t.cardClass)==[1,9,18,18,18]
+        end
+      end
+    end
+  end
+end
+
+@testset "Unsupported twisted products retain no silent defaults" begin
+  for (name,p) in (("2E6",0),("2E6",2),("2B2",2),("2G2",3),("2F4",2)), reverse in (false,true)
+    w=rootdatum(name); a=coxgroup(:A,1)
+    product=reverse ? Chevie.Cosets.extprod(a,w) : Chevie.Cosets.extprod(w,a)
+    @test_throws "products with twisted normalization data" UnipotentClasses(product,p)
+  end
+end
+
+@testset "Labelled 60_8 normalization in 2E6" begin
+  # Lübeck--Shoji, arXiv:2408.16960v1, §9.10: gamma=(-1)^(a_E-d_u).
+  # The printed (9.10.1)-(2) omit this pair; audit its labels explicitly.
+  w=rootdatum("2E6"); info=charinfo(w)
+  i=only(findall(==([[60,8]]),info.charparams))
+  @test info.a[i]==7
+  for p in (0,2,3)
+    u=UnipotentClasses(w,p); s=u.springerseries[1]
+    c,a=s[:locsys][i]
+    @test u.classes[c].name=="A_3{+}A_1"
+    @test u.classes[c].dimBu==8
+    @test a==charinfo(u.classes[c].Au).positionId
+    @test s[:greenSigns][i]==-1
+  end
+end
+
+@testset "Exact integer field representations" begin
+  w=rootdatum(:su,3); u=UnipotentClasses(w,2)
+  for q in (2//1,2E(1)), table in (XTable,GreenTable)
+    for classes in (false,true)
+      @test_throws "incompatible field branch" table(u;q,classes)
+    end
+    t=table(UnipotentClasses(w,2;q=2);q,classes=true)
+    @test sort(t.cardClass)==[1,9,18,18,18]
+  end
+end

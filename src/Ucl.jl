@@ -367,7 +367,12 @@ it for some types and some characteristics but sometimes much less)
   * `.dynkin` the Dynkin-Richardson diagram of `C` (a vector giving a weight 0, 1 or 2 to the simple roots).
   *  `.dimred` the dimension of the reductive part of `C_G(u)`.
   *  `.red` a `CoxeterCoset` recording the type of the reductive part of `C_G(u)`, with the twisting induced by the Frobenius if any.
-  *  `.Au` the group `A_G(u)=C_G(u)/C^0_G(u)`.
+  *  `.Au` the group `A_G(u)=C_G(u)/C^0_G(u)`. After Frobenius filtering,
+     this may instead be the effective quotient by the common kernel of the
+     retained local-system characters. It can depend on the constructor's
+     `q`, unlike the geometric component group.
+  *  `.AuF`, when present, records the Frobenius coset of `.Au`; its conjugacy
+     classes, rather than the ordinary classes of `.Au`, index rational classes.
   *  `.balacarter` encodes the Bala-Carter classification of `C`, which says that `u` is distinguished in a Levi `L` (the Richardson class in a parabolic `P_L`) as a vector listing the indices of the simple roots in `L`, with those not in `P_L` negated.
   *  `.rep` a list of indices for roots such that if `U=UnipotentGroup(W)` then `prod(U,u.rep)` is a representative of `C` (which can be obtained also by `representative(W,u)`).
   *  `.dimunip` the dimension of the unipotent part of `C_G(u)`.
@@ -743,6 +748,9 @@ The integer keyword `q` selects the Frobenius action on central local systems;
 `q=1` retains the generic branch. `UnipotentValues` selects this branch from
 its integer field parameter automatically. To choose a branch for symbolic
 values, use, for example, `UnipotentClasses(rootdatum(:su,3),2;q=2)`.
+`XTable` and `GreenTable` require a compatible branch and reject a numerical
+`q` that would change the retained central characters. Products with twisted
+normalization data are not supported.
 This contains the following fields:
 
 `group`: a pointer to `W`
@@ -876,6 +884,12 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0;q::Integ
   else WF=spets(W)
     t=refltype(W)
     uc=UnipotentClasses.(t,p)
+  end
+  # Twisted products also need products of comparison factors and component
+  # cosets, and the corresponding almost-Harish-Chandra series.
+  if length(uc)>1 && any(u->any(s->haskey(s,:greenSigns) || haskey(s,:scalars),
+                                u.springerseries),uc)
+    error("products with twisted normalization data are not implemented")
   end
   if isempty(t)
     classes=[UnipotentClass("1",[],0,
@@ -1355,6 +1369,9 @@ classes,  available in `t.cardClass`; in this case displaying `t` will show
 the  cardinal  of  the  centralizers  of  unipotent  elements, available in
 `t.centClass`.
 
+For an integer `q`, choose a compatible record using
+`UnipotentClasses(W,p;q)`. Incompatible field branches are rejected, including
+when a previously discarded central character becomes Frobenius-stable again.
 
 ```julia-repl
 julia> W=coxgroup(:G,2)
@@ -1429,15 +1446,13 @@ Values of character sheaves X̃ᵪ of sl₄ on local systems φ
 """
 function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
   q=q*big(1)
-  if q isa Integer
-    q=big(q)
-    w=uc.spets
-    # Shoji, arXiv:math/0507057, §3.2: the type A central character has
-    # order d. Use the surviving series after central quotients, and the lcm
-    # of the orders in a product, to detect the nontrivial q-power action.
-    if (!(w isa Spets) || isone(w.phi)) &&
-       any(s->(q-1)%get(s,:typeAOrder,1)!=0,uc.springerseries)
-      error("nontrivial Frobenius action on type A component groups not implemented")
+  if q isa Union{Integer,Rational,Cyc} && isinteger(q) &&
+     q!=get(uc.prop,:fieldSize,1)
+    # Compare with the constructor's full central-character selection: the
+    # current record alone cannot detect characters discarded in its branch.
+    field=UnipotentClasses(uc.spets,uc.p;q=BigInt(q))
+    if getindex.(uc.springerseries,:Z)!=getindex.(field.springerseries,:Z)
+      error("incompatible field branch; use UnipotentClasses(W,p;q) for this q")
     end
   end
   pieces=map(i->ICCTable(uc,i),eachindex(uc.springerseries))

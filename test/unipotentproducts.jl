@@ -64,7 +64,7 @@ end
               spets(rootdatum(:sl,3)*rootdatum(:sl,2)))
       u=UnipotentClasses(w,2)
       for classes in (false,true)
-        @test_throws "nontrivial Frobenius action on type A component groups" XTable(u;q=2,classes)
+        @test_throws "incompatible field branch" XTable(u;q=2,classes)
       end
       t=UnipotentValues(u;q=2,classes=true)
       @test sum(t.cardClass)==big(2)^(2nref(w isa Spets ? Group(w) : w))
