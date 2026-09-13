@@ -1167,5 +1167,6 @@ end
 end
 
 include("unipotentvalues.jl")
+include("unipotenttwisted.jl")
 include("unipotentproducts.jl")
 include("unipotentlabels.jl")

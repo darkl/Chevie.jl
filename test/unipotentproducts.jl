@@ -63,12 +63,13 @@ end
               coxgroup(:G,2)*rootdatum(:sl,3),
               spets(rootdatum(:sl,3)*rootdatum(:sl,2)))
       u=UnipotentClasses(w,2)
-      for table in (XTable,UnipotentValues), classes in (false,true)
-        @test_throws "nontrivial Frobenius action on type A component groups" table(u;q=2,classes)
+      for classes in (false,true)
+        @test_throws "nontrivial Frobenius action on type A component groups" XTable(u;q=2,classes)
       end
+      t=UnipotentValues(u;q=2,classes=true)
+      @test sum(t.cardClass)==big(2)^(2nref(w isa Spets ? Group(w) : w))
     end
-    # SL3(2) x SL2(2) has six classes. The current component Frobenius
-    # implementation must reject it; removing the SL3 centre makes it supported.
+    # SL3(2) x SL2(2) has six classes; the central quotient has the same values.
     u=UnipotentClasses(rootdatum(:pgl,3)*rootdatum(:sl,2),2)
     t=UnipotentValues(u;q=2,classes=true)
     @test sort(t.cardClass)==[1,3,21,42,63,126]

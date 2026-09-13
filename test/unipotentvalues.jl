@@ -34,7 +34,10 @@ using Test, Chevie
       @test sl.scalar==gl.scalar
       @test sl.cardClass==gl.cardClass
     end
-    @test_throws ErrorException UnipotentValues(UnipotentClasses(rootdatum(:sl,6),2);q=2)
+    sl=UnipotentValues(UnipotentClasses(rootdatum(:sl,6),2);q=2,classes=true)
+    gl=UnipotentValues(UnipotentClasses(rootdatum(:gl,6),2);q=2,classes=true)
+    @test sl.scalar==gl.scalar
+    @test sl.cardClass==gl.cardClass
   end
 
   @testset "Sp4(2) is S6" begin

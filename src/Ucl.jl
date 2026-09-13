@@ -397,7 +397,8 @@ function nameclass(u;opt...)
     end
     n=fromTeX(n;opt...)
   elseif haskey(opt,:class) && opt[:class]!=position_class(u[:Au],one(u[:Au]))
-    cl=conjugacy_classes(u[:Au])[opt[:class]].name
+    Au=haskey(u,:AuF) ? u[:AuF] : u[:Au]
+    cl=conjugacy_classes(Au)[opt[:class]].name
     n=TeX ? "\\mbox{\$$n\$}_{($cl)}" : fromTeX("$(n)_{$cl}";opt...)
   end
   n
@@ -663,7 +664,12 @@ function UnipotentClasses(t::TypeIrred,p=0)
 # for c in uc[:classes] 
 #   if haskey(c,:dynkin) c[:dynkin]=c[:dynkin][sortperm(indices(t))] end
 # end
-  c=haskey(t,:orbit) ? cartan(t.orbit[1]) : cartan(t)
+  ct=haskey(t,:orbit) ? t.orbit[1] : t
+  # Exceptional isogenies use symmetric Cartan matrices for W.F, whereas
+  # weighted Dynkin diagrams describe the underlying crystallographic group.
+  # See Brunat, arXiv:math/0610476, Tables 1, 5 and 9.
+  c=cartan(ct)
+  if !all(isinteger,c) c=cartan(ct.series,rank(ct)) end
   rr=toM(roots(c))
   classes=map(uc[:classes])do u # fill omitted fields
     name=u[:name]
@@ -714,15 +720,29 @@ end
 
 Base.length(uc::UnipotentClasses)=length(uc.classes)
 
+function ree_prime(W)
+  if !(W isa Spets) || order(W.phi)!=2 return 0 end
+  t=refltype(Group(W))
+  if length(t)!=1 || !(only(t).series in (:B,:G,:F)) ||
+     all(isinteger,cartan(only(t))) return 0 end
+  only(t).series==:G ? 3 : 2
+end
+
 """
-`UnipotentClasses(W[,p])`
+`UnipotentClasses(W[,p];q=1)`
 
 `W` should be a `FiniteCoxeterGroup` record for a Weyl group or `rootdatum`
 describing  a reductive algebraic group `𝐆`.  The function returns a record
 containing information about the unipotent classes of `𝐆` in characteristic
 `p`  (if omitted, `p`  is assumed to  be any good  characteristic for `𝐆`).
 In type A, also specify `p` when it divides the order of the simply
-connected centre, since the component groups then change.
+connected centre, since the component groups then change. Suzuki/Ree groups
+select their defining characteristic automatically.
+
+The integer keyword `q` selects the Frobenius action on central local systems;
+`q=1` retains the generic branch. `UnipotentValues` selects this branch from
+its integer field parameter automatically. To choose a branch for symbolic
+values, use, for example, `UnipotentClasses(rootdatum(:su,3),2;q=2)`.
 This contains the following fields:
 
 `group`: a pointer to `W`
@@ -825,18 +845,23 @@ julia> xdisplay(uc;cols=[5,6,7],spaltenstein=true,frame=true,mizuno=true,
 └──────┴─────────────────────────────────────────────────────┘
 ```
 """
-function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
+function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0;q::Integer=1)
 # we construct the unipotentclasses record for a general reductive group
 # as a quotient of the record for a simply connected group
 # xprintln("UnipotentClasses(",W,")")
   w=W isa Spets ? Group(W) : W
+  rp=ree_prime(W)
+  if rp!=0
+    if p!=0 && p!=rp error("characteristic should be $rp") end
+    p=rp
+  end
   # Type A also depends on p when p divides the simply connected centre;
   # see Shoji, arXiv:math/0507057, §3.2, and the type A table.
   if !(p in badprimes(w)) &&
      !(p>1 && any(t->t.series==:A && (rank(t)+1)%p==0,refltype(w)))
     p=0
   end
-  get!(W,Symbol("unipotentclasses",p))do
+  get!(W,Symbol("unipotentclasses",p,"q",q))do
   spetscase=W isa Spets
   if spetscase
     WF=W
@@ -957,6 +982,7 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
   end
   if length(uc)==1 prop=uc[1].prop else prop=Dict{Symbol,Any}() end
   prop[:spets]=spetscase ? WF : W
+  prop[:fieldSize]=q
   if spetscase
     springerseries=filter(x->sort(inclusion(W,x[:levi]).^WF.phi)==
                              sort(inclusion(W,x[:levi])),springerseries)
@@ -972,16 +998,21 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
              algebraic_center(W).descAZ),springerseries)
     AdjustAu!(classes,springerseries)
   end
-  if spetscase
+  if spetscase && any(x->any(!isone,x[:Z]),springerseries)
     g=Group(weightinfo(W)[:AdjointFundamentalGroup])
     permZ=map(x->word(g,x),gens(g).^WF.phi)
-    springerseries=filter(x->map(i->prod(x[:Z][i]),permZ)==x[:Z],springerseries)
+    # Shoji, math/0507057, Theorem 3.4; Lübeck--Shoji, 2408.16960,
+    # Theorem 2.19 and §§3.4, 9.2: compose the diagram action with q-power
+    # on the centre (thus -q for SU, odd-rank 2D and 2E6).
+    springerseries=filter(x->map(i->prod(x[:Z][i])^q,permZ)==x[:Z],springerseries)
+  else
+    springerseries=filter(x->(q-1)%get(x,:typeAOrder,1)==0,springerseries)
   end
 # println(springerseries[1])
   s=springerseries[1]
   if spetscase
     s[:relgroup]=relative_coset(WF,s[:levi])
-    for key in (:locsys,:qMod3Signs)
+    for key in (:locsys,:qMod3Signs,:greenSigns,:scalars)
       if haskey(s,key) s[key]=s[key][charinfo(s[:relgroup]).charRestrictions] end
     end
   end
@@ -991,7 +1022,7 @@ function UnipotentClasses(W::Union{FiniteCoxeterGroup,CoxeterCoset},p=0)
   for s in springerseries[2:end]
     if spetscase
       s[:relgroup]=relative_coset(WF,s[:levi])
-      for key in (:locsys,:qMod3Signs)
+      for key in (:locsys,:qMod3Signs,:greenSigns,:scalars)
         if haskey(s,key) s[key]=s[key][charinfo(s[:relgroup]).charRestrictions] end
       end
     end
@@ -1397,6 +1428,7 @@ Values of character sheaves X̃ᵪ of sl₄ on local systems φ
 ```
 """
 function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
+  q=q*big(1)
   if q isa Integer
     q=big(q)
     w=uc.spets
@@ -1426,26 +1458,32 @@ function XTable(uc::UnipotentClasses;q=Mvp(:q),classes=false)
     :q=>q,
     :class=>classes))
   res.Y=map(x->x(q),res.Y)
-  if q isa Integer && q%3==2
-    signs=vcat(map(s->get(s,:qMod3Signs,ones(Int,length(s[:locsys]))),
-                   uc.springerseries)...)
-    d=Diagonal(invpermute(signs,p))
-    res.scalar=res.scalar*d
-    res.Y=d*res.Y*d
-  end
+  signs=vcat(map(uc.springerseries)do s
+    a=get(s,:greenSigns,ones(Int,length(s[:locsys])))
+    q isa Integer && q%3==2 ? a.*get(s,:qMod3Signs,ones(Int,length(a))) : a
+  end...)
+  d=Diagonal(invpermute(signs,p))
+  res.scalar=res.scalar*d
+  res.Y=d*res.Y*d
   if classes
     res.scalar*=E(1)
     res.cardClass=zeros(eltype(res.scalar),length(l))*1//1
     res.centClass=zeros(eltype(res.scalar),length(l))*1//1
     res.classes=invpermute(l,p)
     for i in eachindex(uc.classes)
-      Au=uc.classes[i].Au
+      Au=get(uc.classes[i].prop,:AuF,uc.classes[i].Au)
       b=filter(j->res.classes[j][1]==i,eachindex(res.classes))
- #    println("i=",i," b=",b," Au=",Au)
-      res.scalar[:,b]*=CharTable(Au).irr
-      res.cardClass[b]=res.Y[[b[charinfo(Au).positionId]],b]*CharTable(Au).irr
+      # Brunat, math/0610476, §3.6: F4(a2) has three F-classes in D8.
+      # Rows of a component coset table index only its F-stable characters.
+      rows=Au isa Spets ? map(j->findfirst(==(res.classes[j][2]),
+                                         charinfo(Au).charRestrictions),b) : last.(res.classes[b])
+      irr=CharTable(Au).irr[rows,:]
+      res.scalar[:,b]*=irr
+      id=findfirst(==(charinfo(Au).positionId),rows)
+      res.cardClass[b]=res.Y[[b[id]],b]*irr
       res.cardClass[b]=map((x,y)->x*y//length(Au),
                            res.cardClass[b],length.(conjugacy_classes(Au)))
+      res.classes[b]=[[i,j] for j in eachindex(b)]
       res.centClass[b]=generic_order(uc.spets)(q).//res.cardClass[b]
     end
     res.scalar=improve_type(res.scalar)
@@ -1614,8 +1652,20 @@ field-dependent signs in `G₂` and `E₈`. Specify the characteristic in
 `UnipotentClasses(W,p)` before passing `q=p^f`. For symbolic `q` these
 factors remain +1 (`q≡1 (mod 3)` when the congruence matters). Split classical
 groups in characteristic two are supported. The known correspondences and
-normalization constants extend to split direct products; nontrivial Frobenius
-actions on type A component groups are not implemented.
+normalization constants extend to split direct products. Unitary groups,
+odd-characteristic `²Dₙ`, and `³D₄` and `²E₆` in all characteristics are
+supported. Type A, odd-rank `²Dₙ`, and simply connected `²E₆` specialize their
+central local systems to the field; interpret columns using the returned
+`t.uc`, since the input record is preserved.
+
+For Suzuki/Ree groups use `q=√Q`, where `Q=p^(2m+1)` and `m≥0`: for example,
+`UnipotentValues(UnipotentClasses(rootdatum("2F4"));q=root(8),classes=true)`.
+Symbolic `q` uses the same square-root convention. The smallest parameters
+refer to the full fixed-point groups, including `²F₄(2)`.
+
+Each Springer series may specify `:scalars`, the comparison factors in its
+`:locsys` order. Its `:hc` selects an almost-Harish-Chandra series (`0` means
+vanishing). The table comments give the sources and extension conventions.
 
 ```julia-repl
 julia> W=coxgroup(:G,2)
@@ -1672,21 +1722,73 @@ Values of unipotent characters for G₂ on unipotent classes
 ```
 """
 function UnipotentValues(uc;q=Mvp(:q),classes=false)
+  rp=ree_prime(uc.spets)
+  if rp!=0 && q isa Union{Integer,Rational,Cyc}
+    # Brunat, math/0610476, §1: q²=p^(2m+1), m≥0, for Suzuki/Ree.
+    q=q*big(1)
+    if !isinteger(q^2) || q<=0 error("q² must be an odd power of $rp") end
+    Q=BigInt(q^2); f=0
+    while Q>1 && Q%rp==0 Q=div(Q,rp); f+=1 end
+    if Q!=1 || iseven(f) error("q² must be an odd power of $rp") end
+  end
+  w=uc.spets isa Spets ? Group(uc.spets) : uc.spets
+  types=refltype(w)
+  twisted=uc.spets isa Spets && !isone(uc.spets.phi)
+  if twisted && length(types)==1
+    t=only(types)
+    if t.series==:D && order(uc.spets.phi)==2 && rank(t)>=4 &&
+       (uc.p==2 || q isa Integer && iseven(q))
+      error("unipotent values for 2D require odd characteristic")
+    elseif q isa Integer &&
+           ((t.series==:D && order(uc.spets.phi)==3 && uc.p!=2 && iseven(q)) ||
+            (t.series==:E && rank(t)==6 && uc.p==0 && (q%2==0 || q%3==0)))
+      error("specify the characteristic in UnipotentClasses(W,p)")
+    end
+  end
+  if q isa Integer && q!=get(uc.prop,:fieldSize,1) &&
+     (any(t->t.series==:A,types) || twisted && length(types)==1 &&
+      (only(types).series==:D && isodd(rank(only(types))) ||
+       only(types).series==:E && rank(only(types))==6 && uc.p!=3))
+    original=copy(uc.springerseries)
+    field=UnipotentClasses(uc.spets,uc.p;q)
+    uc=UnipotentClasses(field.classes,field.p,field.orderclasses,
+                       deepcopy(field.springerseries),copy(field.prop))
+    for s in uc.springerseries
+      # Several cuspidal pairs can share Z and Levi; their order survives
+      # field specialization, so consume each matching series only once.
+      old=findfirst(x->x[:Z]==s[:Z] && x[:levi]==s[:levi],original)
+      if !isnothing(old)
+        for key in (:hc,:scalars)
+          if haskey(original[old],key)
+            s[key]=original[old][key]
+          end
+        end
+        deleteat!(original,old)
+      end
+    end
+  end
   t=ValuesTable(XTable(uc;classes,q).prop)
   uw=UnipotentCharacters(uc.spets)
   f=toL(fourier(uw))
-  m=Vector{eltype(f[1])}[]
+  m=Vector[]
   for (i,ss) in pairs(uc.springerseries)
   # ss[:hc]=0 : local systems are not in unipotent Lusztig series
-  # ss[:hc]=i : XTable rows correspond to the Fourier rows of the i-th HC series
+  # ss[:hc]=i : XTable rows correspond to the i-th almost-HC series
   # ss[:hc] unbound: information missing
-    hc=i==1 ? 1 : get(ss,:hc,nothing)
+    hc=get(ss,:hc,i==1 ? 1 : nothing)
     if isnothing(hc) error("Springer/Harish-Chandra correspondence for series $i not implemented")
     elseif hc==0 append!(m,map(_->zero(f[1]),eachindex(ss[:locsys])))
     else
-      n=charnumbers(uw.harishChandra[hc])
+      # Lusztig, Characters of Reductive Groups over a Finite Field,
+      # 4.19: Springer characters index almost-Harish-Chandra series.
+      # For odd-characteristic 2D the comparison is +1 (Lübeck--Shoji,
+      # arXiv:2408.16960, Theorem 3.2); nonprincipal blocks vanish by
+      # Digne--Lehrer--Michel, arXiv:1307.0698, Lemmas 5.2--5.3, Appendix B.
+      n=charnumbers(uw.almostHarishChandra[hc])
       length(n)==length(ss[:locsys]) || error("Springer/Harish-Chandra correspondence for series $i not implemented")
-      append!(m,f[n])
+      scalars=get(ss,:scalars,ones(Int,length(n)))
+      length(scalars)==length(n) || error("wrong number of Springer scalars")
+      append!(m,map((a,b)->a*b,scalars,f[n]))
     end
   end
   t.scalar=transpose(toM(m))*t.scalar

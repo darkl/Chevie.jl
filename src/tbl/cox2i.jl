@@ -45,6 +45,12 @@ chevieset("2I", :charinfo, function(m)
     res[:B]=vcat([0,m],map(i->m-i,1:div(m-1,2)))
     res[:charnames]=exceptioCharName.(res[:charparams])
   end
+  # Brunat, math/0610476, Tables 1 and 5: F-stable Springer characters
+  # in the underlying B2/G2 ordering (the other linear characters move).
+  if m in (4,6)
+    res[:charRestrictions]=m==4 ? [4,3,2] : [1,2,5,6]
+    res[:nrGroupClasses]=m==4 ? 5 : 6
+  end
   res
 end)
 
@@ -232,13 +238,29 @@ chevieset("2I", :UnipotentCharacters,function(e)
 end)
 
 chevieset("2I", :UnipotentClasses, function(e,char,ctype)
-  if e==4 
+  if e==4
     if char!=2 error("characteristic should be 2") end
-    chevieget(:B,:UnipotentClasses)(2,char,ctype)
-   elseif e==6 
+    uc=chevieget(:B,:UnipotentClasses)(2,char,ctype)
+    # Brunat, math/0610476, Theorem 3.1: involution extension sign.
+    s=uc[:springerSeries][1]
+    s[:greenSigns]=[c==2 ? -1 : 1 for (c,a) in s[:locsys]]
+    # R_B2=i*q*epsilon fixes our regular-class convention. With a fixed
+    # Chevalley representative use Brunat, math/0511580, Theorem 4.2.
+    uc[:springerSeries][2][:scalars]=[E(4)]
+  elseif e==6
     if char!=3 error("characteristic should be 3") end
-    chevieget(:G2,:UnipotentClasses)(char,ctype)
+    uc=chevieget(:G2,:UnipotentClasses)(char,ctype)
+    # Brunat, math/0610476, Theorem 3.2, in CHEVIE preferred extensions.
+    s=uc[:springerSeries][1]
+    s[:greenSigns]=[c==3 || (c==4 && a==2) ? -1 : 1 for (c,a) in s[:locsys]]
+    # Ward's table; Brunat, 0807.3766, Theorems 4.1 and 5.1:
+    # R8=i*q²*epsilon, R5=q*chi_(zeta3²), R7=-q*chi_(zeta3).
+    for (s,h,c) in zip(uc[:springerSeries][2:end],[5,4,2],[E(4),-1,1])
+      s[:hc]=h; s[:scalars]=[c]
+    end
+  else return nothing
   end
+  uc
 end)
   
 chevieset("2I", :Ennola, function(e)

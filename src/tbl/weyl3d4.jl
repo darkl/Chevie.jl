@@ -189,6 +189,10 @@ chevieset("3D4",:UnipotentCharacters,
 
 chevieset("3D4", :UnipotentClasses, function(p)
   uc=copy(chevieget(:D, :UnipotentClasses)(4,p))
+  # Lübeck--Shoji, 2408.16960, §10.1: principal scalars are +1.
+  # Spaltenstein, Caractères unipotents de 3D4(F_q) (1982), Theorem 2
+  # and Table 2: at p=2 the extra almost character is q² times the
+  # sign local system on the regular class; its comparison scalar is +1.
   uc[:classes]=copy(uc[:classes])
   for c in [["11111111", perm"(1,2,4)"],
             ["221111", perm"(1,2,3)"]]

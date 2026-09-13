@@ -216,5 +216,18 @@ chevieset("2F4", :UnipotentCharacters,
 
 chevieset("2F4", :UnipotentClasses, function(char,ctype)
   if char!=2 error("characteristic should be 2") end
-  chevieget(:F4,:UnipotentClasses)(char,ctype)
+  uc=chevieget(:F4,:UnipotentClasses)(char,ctype)
+  # Brunat, math/0610476, §3.6 and Theorem 3.3: F4(a2) has component
+  # group D8 with three F-classes; these extension signs use CHEVIE's
+  # preferred Weyl-group extensions (Table 10 of the same paper).
+  uc[:classes][14][:AuF]=spets(coxgroup(:Bsym,2),Perm(1,2))
+  s=uc[:springerSeries][1]
+  s[:greenSigns]=[c in (4,10) || (c==11 && a==2) ? -1 : 1 for (c,a) in s[:locsys]]
+  # Malle, Die unipotenten Charaktere von 2F4(q²) (1990), Tabelle 2,
+  # with the Geck--Malle (2003), §5 Fourier transform. The B2-induced
+  # phase agrees with R_B2=i*q*epsilon for the Suzuki cuspidal pair.
+  for (s,c) in zip(uc[:springerSeries][2:end],[1,E(4),E(8,-1),E(8),1,1])
+    s[:scalars]=fill(c,length(s[:locsys]))
+  end
+  uc
 end)

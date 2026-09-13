@@ -323,6 +323,19 @@ chevieset("2E6", :Ennola, SPerm())
 
 chevieset("2E6", :UnipotentClasses, function (p,)
   uc=copy(chevieget(:E6, :UnipotentClasses)(p))
+  # Lübeck--Shoji, 2408.16960v1, §9.10 and Proposition 9.14:
+  # gamma=(-1)^(a_E-d_u) for preferred extensions. This also negates
+  # 60_8 on A3+A1 (a_E=7, d_u=8), omitted from their explicit (9.10.1)-(2).
+  # At p=2, Hetz, 2309.09915v2, §8.9 and Table 7 negate the D4 sign
+  # local system. Lemma 8.5 gives the remaining D4-induced comparison +1.
+  # At p=3 the two regular cuspidal scalars are +1: Hetz, 1901.06225,
+  # Proposition 4.5. Their :hc indices agree with the almost series.
+  for s in uc[:springerSeries]
+    s[:greenSigns]=map(s[:locsys])do (c,a)
+      a==1 && (uc[:classes][c][:name] in ("A_5","3A_1","A_3{+}A_1") ||
+               p==2 && uc[:classes][c][:name]=="D_4") ? -1 : 1
+    end
+  end
   l=[("1", perm"(1,6)(3,5)"), ("A_1", perm"(1,5)(2,4)"), 
      ("A_2", perm"(1,2)(3,4)"), ("D_4", perm"(1,2)"), ("D_5", [-1;;]), 
      ("D_5(a_1)", [-1;;]), ("A_4{+}A_1", [-1;;]), ("A_4", [1 0;0 -1]), 
